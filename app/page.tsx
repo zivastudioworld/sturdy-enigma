@@ -1,33 +1,75 @@
-import Link from "next/link";
+import { createClient } from "@/lib/supabase/server";
+import type { Product } from "@/lib/types";
+import { ProductSearch } from "@/components/product-search";
 
-export default function HomePage() {
+// Map DB trend_direction values to Product type values
+function mapTrendDirection(dbValue: string): "up" | "down" | "stable" {
+  switch (dbValue) {
+    case "rising":
+      return "up";
+    case "declining":
+      return "down";
+    default:
+      return "stable";
+  }
+}
+
+// Map a raw DB row to the Product type
+function mapRowToProduct(row: Record<string, unknown>): Product {
+  return {
+    id: row.id as string,
+    name: row.title as string,
+    description: (row.description as string) ?? "",
+    category: row.category as string,
+    image_url: row.image_url as string,
+    price: Number(row.price),
+    source_platform: row.platform as string,
+    source_url: row.source_url as string,
+    opportunity_score: row.opportunity_score as number,
+    competition_rating: row.competition_level as Product["competition_rating"],
+    demand_rating: row.demand_level as Product["demand_rating"],
+    profit_margin_estimate: Number(row.profit_margin_estimate ?? 0),
+    trend_direction: mapTrendDirection(row.trend_direction as string),
+    created_at: row.created_at as string,
+    updated_at: (row.created_at as string) ?? new Date().toISOString(),
+  };
+}
+
+export default async function HomePage() {
+  let products: Product[] = [];
+  let fetchError: string | null = null;
+
+  try {
+    const supabase = await createClient();
+
+    const { data, error } = await supabase
+      .from("products")
+      .select("*")
+      .order("opportunity_score", { ascending: false });
+
+    if (error) {
+      fetchError = error.message;
+    } else if (data) {
+      products = data.map(mapRowToProduct);
+    }
+  } catch (err) {
+    fetchError = err instanceof Error ? err.message : "Failed to load products";
+  }
+
   return (
-    <main className="flex-1 flex flex-col items-center justify-center px-4">
-      <div className="max-w-2xl text-center space-y-8">
-        <h1 className="text-5xl sm:text-6xl font-bold tracking-tight text-brand-600">
-          Scoutify AI
-        </h1>
-        <p className="text-xl sm:text-2xl text-gray-600 leading-relaxed">
-          Find products worth selling before everyone else.
-        </p>
-        <p className="text-gray-500 max-w-lg mx-auto">
-          AI-powered product research for dropshippers. Search across platforms,
-          get opportunity scores, and launch with confidence.
-        </p>
-        <div className="flex gap-4 justify-center">
-          <Link
-            href="/login"
-            className="rounded-lg bg-brand-600 px-6 py-3 text-white font-medium hover:bg-brand-700 transition-colors"
-          >
-            Get Started
-          </Link>
-          <a
-            href="#features"
-            className="rounded-lg border border-gray-300 px-6 py-3 text-gray-700 font-medium hover:bg-gray-50 transition-colors"
-          >
-            Learn More
-          </a>
+    <main className="flex-1">
+      <div className="max-w-7xl mx-auto px-4 py-8">
+        {/* Page header */}
+        <div className="mb-8">
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">
+            Discover Products
+          </h1>
+          <p className="mt-1 text-sm text-gray-500">
+            Browse AI-scored product opportunities across 8 categories
+          </p>
         </div>
+
+        <ProductSearch initialProducts={products} fetchError={fetchError} />
       </div>
     </main>
   );
